@@ -1,4 +1,5 @@
 import json
+import statistics
 import time
 from pathlib import Path
 from typing import Optional, Union
@@ -285,6 +286,82 @@ class GenerationBenchmark:
             },
         )
 
+    def run_end_to_end_benchmark(
+        self,
+        batch_size: int = 4,
+        prompt_length: int = 512,
+        gen_length: int = 128,
+        num_trials: int = 5,
+    ) -> BenchmarkResult:
+        """Measure complete prompt-to-generation and steady-state throughput."""
+        if self.tokenizer is None:
+            raise ValueError("End-to-end benchmark requires a tokenizer")
+        phrase = "Benchmark the language model with a realistic generation prompt. "
+        prompt_ids = self.tokenizer.encode(
+            (phrase * (prompt_length // 10 + 2)).strip()
+        )[:prompt_length]
+        prompt = self.tokenizer.decode(prompt_ids, skip_special_tokens=False)
+        prompt_tokens = len(self.tokenizer.encode(prompt))
+        pool = self._make_pool(batch_size, prompt_tokens + gen_length)
+        engine = InferenceEngine(
+            model=self.model,
+            tokenizer=self.tokenizer,
+            max_batch_size=batch_size,
+            max_seq_len=prompt_tokens + gen_length,
+            cache=pool,
+            enable_cuda_graph=self.cuda_graph,
+            backend=self.backend,
+        )
+        prompts = [prompt] * batch_size
+        try:
+            list(engine.generate(prompts, stream=True, max_tokens=gen_length, temperature=0.0))
+            if self.device.startswith("cuda"):
+                torch.cuda.synchronize()
+            totals, ttfts, decode_totals, counts = [], [], [], []
+            for _ in range(num_trials):
+                start = time.perf_counter()
+                first = None
+                count = 0
+                for _item in engine.generate(
+                    prompts, stream=True, max_tokens=gen_length, temperature=0.0
+                ):
+                    count += 1
+                    if first is None:
+                        first = time.perf_counter()
+                if self.device.startswith("cuda"):
+                    torch.cuda.synchronize()
+                end = time.perf_counter()
+                total = end - start
+                ttft = first - start if first is not None else total
+                ttfts.append(ttft)
+                decode_totals.append(total - ttft)
+                totals.append(total)
+                counts.append(count)
+        finally:
+            engine.shutdown()
+
+        total = statistics.median(totals)
+        ttft = statistics.median(ttfts)
+        generated = statistics.median(counts)
+        decode_tokens = max(generated - batch_size, 1)
+        output_tps = decode_tokens / statistics.median(decode_totals)
+        return BenchmarkResult(
+            name="end_to_end",
+            batch_size=batch_size,
+            seq_len=prompt_tokens + gen_length,
+            tokens_per_second=(prompt_tokens * batch_size + generated) / total,
+            latency_ms=total * 1000.0,
+            metadata={
+                "benchmark_type": "end_to_end",
+                "num_trials": num_trials,
+                "prompt_tokens": prompt_tokens,
+                "generated_tokens": generated,
+                "ttft_ms": ttft * 1000.0,
+                "output_tps": output_tps,
+                "cuda_graph": engine.cuda_graph_enabled,
+            },
+        )
+
     def _run_graph_decode_benchmark(
         self,
         batch_size: int,
@@ -398,10 +475,25 @@ class GenerationBenchmark:
 def print_benchmark_result(result: BenchmarkResult) -> None:
     print("-" * 80)
     print(f"{result.name.upper()} — Batch={result.batch_size}, SeqLen={result.seq_len}")
-    print(f"  Throughput : {result.tokens_per_second:.1f} tokens/s")
-    print(f"  Latency    : {result.latency_ms:.2f} ms/step")
+    if result.name == "end_to_end":
+        print(f"  Total latency: {result.latency_ms:.2f} ms")
+        print(f"  TTFT         : {result.metadata['ttft_ms']:.2f} ms")
+        print(f"  Decode TPS  : {result.metadata['output_tps']:.1f} tokens/s")
+        print(f"  Total TPS   : {result.tokens_per_second:.1f} tokens/s")
+        print(f"  Prompt tokens: {result.metadata['prompt_tokens']}")
+        print(f"  Output tokens: {result.metadata['generated_tokens']}")
+    else:
+        print(f"  Throughput : {result.tokens_per_second:.1f} tokens/s")
+        print(f"  Latency    : {result.latency_ms:.2f} ms/step")
+    displayed = {
+        "benchmark_type",
+        "prompt_tokens",
+        "generated_tokens",
+        "ttft_ms",
+        "output_tps",
+    }
     for k, v in result.metadata.items():
-        if k != "benchmark_type":
+        if k not in displayed:
             print(f"  {k.replace('_', ' ').title()}: {v}")
     print("-" * 80)
 
@@ -431,6 +523,23 @@ def print_benchmark_result(result: BenchmarkResult) -> None:
 @click.option("--num_trials", type=int, default=5, help="Number of trials.")
 @click.option("--prefill_only", is_flag=True, help="Prefill benchmark only.")
 @click.option("--decode_only", is_flag=True, help="Decode benchmark only.")
+@click.option(
+    "--end_to_end",
+    "--end-to-end",
+    "end_to_end",
+    is_flag=True,
+    help="Complete prompt-to-generation benchmark only.",
+)
+@click.option(
+    "--int8-decode/--no-int8-decode",
+    default=False,
+    help="Use cached W8A8 only for supported batch-1 decode MLP projections.",
+)
+@click.option(
+    "--int8-attention/--no-int8-attention",
+    default=False,
+    help="Also use INT8 for decode q_proj/o_proj attention GEMVs.",
+)
 @click.option(
     "--cuda-graph/--no-cuda-graph",
     default=True,
@@ -465,6 +574,9 @@ def benchmark_command(
     num_trials: int,
     prefill_only: bool,
     decode_only: bool,
+    end_to_end: bool,
+    int8_decode: bool,
+    int8_attention: bool,
     cuda_graph: bool,
     ckpt: Optional[str],
     config_path: Optional[Path],
@@ -499,6 +611,11 @@ def benchmark_command(
 
     model.to(device=device, dtype=dtype_map[dtype])
     model.eval()
+    if int8_decode:
+        prepared = model.set_int8_decode_enabled(
+            True, include_attention=int8_attention
+        )
+        click.echo(f"INT8 decode: prepared {prepared} supported Linear projections")
 
     backends = _BACKENDS if compare else [backend]
 
@@ -517,6 +634,16 @@ def benchmark_command(
         click.secho(
             f"Benchmark: device={device} dtype={dtype} backend={name}", bold=True
         )
+
+        if end_to_end:
+            result = bench.run_end_to_end_benchmark(
+                batch_size=batch_size,
+                prompt_length=prompt_length,
+                gen_length=gen_length,
+                num_trials=num_trials,
+            )
+            print_benchmark_result(result)
+            continue
 
         if not decode_only:
             result = bench.run_prefill_benchmark(

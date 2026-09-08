@@ -59,7 +59,13 @@ class AutoRegressiveLM(AutoModel):
         )
 
         self.norm = RMSNorm(config.hidden_size, config.rms_norm_eps)
-        self.lm_head = Linear(config.hidden_size, config.vocab_size)
+        # The decode lm_head is a large M=1 GEMV and explicitly opts into the
+        # optional INT8 capability; other components declare their own policy.
+        self.lm_head = Linear(
+            config.hidden_size,
+            config.vocab_size,
+            int8_decode_supported=True,
+        )
 
         if self.config.tie_word_embeddings is True:
             self.lm_head.weight = self.embed_tokens.weight

@@ -335,6 +335,21 @@ DEVICE_FORCEINLINE void mma_sync(float d[4], const unsigned a[4],
     MmaOp<InT, InT, typename MmaShapeFor<InT>::type>::fma(d, a, b, c);
 }
 
+// INT8 tensor-core MMA is available starting with Turing (sm_75).  Its
+// operand fragments have the same 4x/2x b32 layout as the FP8 m16n8k32
+// instruction, but the accumulator is signed int32 rather than fp32.
+DEVICE_FORCEINLINE void mma_sync_s8(int d[4], const unsigned a[4],
+                                    const unsigned b[2], const int c[4]) {
+    static_assert(ASTRAI_DEVICE_ARCH == 0 || ASTRAI_DEVICE_ARCH >= 750,
+                  "mma_sync_s8 requires sm_75 or newer");
+    asm volatile(
+        "mma.sync.aligned.m16n8k32.row.col.s32.s8.s8.s32 "
+        "{%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%10,%11,%12,%13};"
+        : "=r"(d[0]), "=r"(d[1]), "=r"(d[2]), "=r"(d[3])
+        : "r"(a[0]), "r"(a[1]), "r"(a[2]), "r"(a[3]), "r"(b[0]),
+          "r"(b[1]), "r"(c[0]), "r"(c[1]), "r"(c[2]), "r"(c[3]));
+}
+
 #undef ASTRAI_DEVICE_ARCH
 
 // ---------------------------------------------------------------------------

@@ -20,6 +20,11 @@ FP8_AVAIL = (
     and is_available("quantize")
     and torch.cuda.get_device_capability() >= (8, 9)
 )
+INT8_AVAIL = (
+    CUDA_AVAIL
+    and is_available("int8_ops")
+    and torch.cuda.get_device_capability() >= (7, 5)
+)
 skip_no_cuda = pytest.mark.skipif(not CUDA_AVAIL, reason="CUDA not available")
 skip_lt2_cuda = pytest.mark.skipif(
     not CUDA_AVAIL or torch.cuda.device_count() < 2,
@@ -29,6 +34,10 @@ skip_no_kernel = pytest.mark.skipif(not KERNEL_AVAIL, reason="CUDA kernels not b
 skip_no_fp8 = pytest.mark.skipif(
     not FP8_AVAIL,
     reason="fused FP8 MMA requires a built kernel and compute capability 8.9+",
+)
+skip_no_int8 = pytest.mark.skipif(
+    not INT8_AVAIL,
+    reason="fused INT8 MMA requires a built kernel and compute capability 7.5+",
 )
 
 

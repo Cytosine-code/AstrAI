@@ -11,6 +11,7 @@
 - [Engine & GenerateResult](#engine--generateresult)
 - [HTTP API](#http-api) — endpoints, SSE, errors, stats
 - [Engine API](#engine-api)
+- [Optional INT8 Decode](int8-decode.md)
 
 ## KV Cache
 

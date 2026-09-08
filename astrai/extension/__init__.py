@@ -54,6 +54,10 @@ from astrai.extension.ops import (
     attn_paged_decode,
     attn_paged_prefill,
     attn_prefill,
+    linear_forward_int8,
+    mm_int8,
+    quantize_dynamic_bf16,
+    quantize_weight_bf16,
 )
 
 __all__ = [
@@ -71,6 +75,10 @@ __all__ = [
     "attn_paged_decode",
     "attn_prefill",
     "attn_paged_prefill",
+    "quantize_dynamic_bf16",
+    "quantize_weight_bf16",
+    "mm_int8",
+    "linear_forward_int8",
     "is_available",
     "KERNEL_NAMES",
     "apply_rotary_emb",

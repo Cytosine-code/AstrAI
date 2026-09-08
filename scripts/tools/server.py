@@ -22,6 +22,8 @@ _SERVER_KEYS = (
     "dtype",
     "max_batch_size",
     "max_seq_len",
+    "int8_decode",
+    "int8_attention",
 )
 
 
@@ -88,6 +90,20 @@ _SPECS = [
         default=None,
         help="Maximum sequence length (KV cache size + prompt truncation). "
         "Uses model config if not set.",
+    ),
+    OptSpec(
+        "int8_decode",
+        "Performance",
+        is_flag=True,
+        default=False,
+        help="Use cached INT8 weights for supported batch-1 decode projections.",
+    ),
+    OptSpec(
+        "int8_attention",
+        "Performance",
+        is_flag=True,
+        default=False,
+        help="Also use INT8 for supported decode attention projections.",
     ),
 ]
 
@@ -168,6 +184,8 @@ def server_command(ctx, config_path, **kwargs):
         param_path=Path(kwargs["param_path"]),
         max_batch_size=kwargs["max_batch_size"],
         max_seq_len=kwargs["max_seq_len"],
+        int8_decode=kwargs["int8_decode"],
+        int8_attention=kwargs["int8_attention"],
     )
 
 

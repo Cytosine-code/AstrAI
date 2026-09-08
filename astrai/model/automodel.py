@@ -128,3 +128,22 @@ class AutoModel(nn.Module):
             state_dict=self.state_dict(),
             save_directory=str(save_directory),
         )
+
+    def set_int8_decode_enabled(
+        self, enabled: bool, include_attention: bool = False
+    ) -> int:
+        """Configure supported Linear modules for decode-only W8A8 inference.
+
+        Returns the number of projections prepared with cached static INT8
+        weights. Modules without a supported shape remain ordinary BF16 Linear.
+        """
+        prepared = 0
+        for module in self.modules():
+            if module is self:
+                continue
+            configure = getattr(module, "set_int8_decode_enabled", None)
+            if configure is not None and configure(
+                enabled, include_attention=include_attention
+            ):
+                prepared += 1
+        return prepared

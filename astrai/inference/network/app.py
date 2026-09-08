@@ -162,6 +162,8 @@ def run_server(
     dtype: torch.dtype = torch.bfloat16,
     max_batch_size: int = 16,
     max_seq_len: Optional[int] = None,
+    int8_decode: bool = False,
+    int8_attention: bool = False,
 ):
     app = get_app()
     app.state.server_config = {
@@ -170,6 +172,8 @@ def run_server(
         "param_path": param_path,
         "max_batch_size": max_batch_size,
         "max_seq_len": max_seq_len,
+        "int8_decode": int8_decode,
+        "int8_attention": int8_attention,
     }
     uvicorn.run(
         app,

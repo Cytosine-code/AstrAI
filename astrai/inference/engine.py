@@ -324,6 +324,8 @@ def build_engine(
     dtype: Optional[torch.dtype] = torch.bfloat16,
     max_batch_size: int = 16,
     max_seq_len: Optional[int] = None,
+    int8_decode: bool = False,
+    int8_attention: bool = False,
     **engine_kwargs: Any,
 ) -> InferenceEngine:
     """Composition root for inference assembly.
@@ -355,6 +357,12 @@ def build_engine(
             f"Model placed on {placement.get('device')} "
             f"with dtype {placement.get('dtype')}"
         )
+
+    if int8_decode:
+        prepared = model.set_int8_decode_enabled(
+            True, include_attention=int8_attention
+        )
+        logger.info("INT8 decode enabled: prepared %d projections", prepared)
 
     return InferenceEngine(
         model=model,

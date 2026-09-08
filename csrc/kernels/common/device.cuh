@@ -125,4 +125,7 @@ inline DeviceFacts device_facts() {
     return facts;
 }
 
+inline constexpr int kMinSmForInt8Major = 7;
+inline constexpr int kMinSmForInt8Minor = 5;
+
 }  // namespace astrai

@@ -137,13 +137,18 @@ class _CMakeBuildExt(_build_ext):
         # CMake may report partial‑target success even if some architecture‑specific kernels are skipped.
         # Prevent editable install from reporting success when critical kernel shared objects are missing.
         lib_dir = src / "astrai" / "extension" / "lib"
-        required = (
+        required = [
             "attn_decode",
             "attn_prefill",
             "attn_paged_decode",
             "attn_paged_prefill",
             "rotary_emb",
-        )
+        ]
+        try:
+            if arch is None or int(str(arch)) >= 75:
+                required.append("int8_ops")
+        except ValueError:
+            required.append("int8_ops")
         missing = [name for name in required if not any(lib_dir.glob(f"{name}.*.so"))]
         if missing:
             raise RuntimeError(

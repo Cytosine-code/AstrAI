@@ -42,10 +42,17 @@ class GQA(nn.Module):
         self.use_qk_norm = use_qk_norm
         self.use_gated_attention = use_gated_attention
 
-        self.q_proj = Linear(dim, n_heads * self.head_dim)
+        self.q_proj = Linear(
+            dim, n_heads * self.head_dim, int8_decode_attention=True
+        )
         self.k_proj = Linear(dim, n_kv_heads * self.head_dim)
         self.v_proj = Linear(dim, n_kv_heads * self.head_dim)
-        self.o_proj = Linear(dim, dim, init_std=0.02 / (2 * n_layers) ** 0.5)
+        self.o_proj = Linear(
+            dim,
+            dim,
+            init_std=0.02 / (2 * n_layers) ** 0.5,
+            int8_decode_attention=True,
+        )
 
         if self.use_qk_norm:
             self.q_norm = RMSNorm(self.head_dim, norm_eps)
@@ -118,7 +125,12 @@ class MLA(nn.Module):
         self.use_qk_norm = use_qk_norm
         self.use_gated_attention = use_gated_attention
 
-        self.q_proj = Linear(dim, n_heads * self.head_dim, bias=False)
+        self.q_proj = Linear(
+            dim,
+            n_heads * self.head_dim,
+            bias=False,
+            int8_decode_attention=True,
+        )
 
         if self.use_qk_norm:
             self.q_norm = RMSNorm(self.head_dim, norm_eps)
@@ -132,7 +144,11 @@ class MLA(nn.Module):
         )
 
         self.o_proj = Linear(
-            dim, dim, bias=False, init_std=0.02 / (2 * n_layers) ** 0.5
+            dim,
+            dim,
+            bias=False,
+            init_std=0.02 / (2 * n_layers) ** 0.5,
+            int8_decode_attention=True,
         )
 
         if use_gated_attention:

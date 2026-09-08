@@ -101,6 +101,15 @@ set(KERNEL_SRCS
     rotary_emb.cu
 )
 
+if(ASTRAI_CUDA_ARCH_MAX GREATER_EQUAL 75)
+    list(APPEND KERNEL_NAMES int8_ops)
+    list(APPEND KERNEL_SRCS int8/ops.cu)
+else()
+    message(WARNING
+        "INT8 operator disabled: max ASTRAI_CUDA_ARCH=${ASTRAI_CUDA_ARCH} "
+        "requires compute capability 75 or newer")
+endif()
+
 if(ASTRAI_CUDA_ARCH_MAX GREATER_EQUAL 89)
     list(APPEND KERNEL_NAMES quantize)
     list(APPEND KERNEL_SRCS quantize/quantize.cu)
